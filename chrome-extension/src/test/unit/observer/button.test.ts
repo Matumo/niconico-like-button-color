@@ -150,6 +150,41 @@ describe("ボタン監視", () => {
     expect(warn).not.toHaveBeenCalled();
   });
 
+  it("resetObserversでオブザーバー停止を多重呼び出しでも壊れない", async () => {
+    // ログ出力と色情報取得のモックを準備
+    const debug = vi.fn();
+    const warn = vi.fn();
+    const getLikeButtonColor = vi.fn(() => "#AA22BB");
+
+    // テスト対象が参照する依存モジュールを差し替え
+    vi.doMock("@main/util/logger", () => ({
+      default: { debug, warn },
+    }));
+    vi.doMock("@main/config/storage", () => ({
+      storage: { getLikeButtonColor },
+    }));
+    vi.stubGlobal("MutationObserver", FakeMutationObserver);
+
+    // テスト対象をインポート
+    const { resetObservers, startButtonCheckObserver } = await import("@main/observer/button");
+
+    // 監視開始後にresetObserversで切断されることを確認
+    const state: ButtonState = {
+      params: "{\"current\":true}",
+      path: createPath(),
+    };
+    startButtonCheckObserver(createButton(state));
+    expect(FakeMutationObserver.instances).toHaveLength(1);
+
+    const observer = FakeMutationObserver.instances[0];
+    resetObservers();
+    expect(observer.disconnect).toHaveBeenCalledTimes(1);
+
+    // 連続呼び出ししても追加の切断や例外が発生しないことを確認
+    resetObservers();
+    expect(observer.disconnect).toHaveBeenCalledTimes(1);
+  });
+
   it("svgやparams不足と不正paramsを処理する", async () => {
     // ログ出力のモックを準備
     const debug = vi.fn();

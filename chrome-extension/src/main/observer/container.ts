@@ -2,7 +2,10 @@
  * 必要なDOM要素を検出し各監視オブザーバーを接続
  */
 import { config, selectors } from "@main/config/config";
-import { startButtonCheckObserver } from "@main/observer/button";
+import {
+  resetObservers as resetButtonObservers,
+  startButtonCheckObserver,
+} from "@main/observer/button";
 import log from "@main/util/logger";
 
 // 監視開始に必要なDOM要素
@@ -40,10 +43,8 @@ const onFullscreenChange = (): void => {
 // フルスクリーン変更監視を開始する関数
 const startFullscreenChangeObserver = (fullscreenTarget: Element): void => {
   // 古いオブザーバーを停止
-  if (currentFullscreenChangeObserver) {
-    currentFullscreenChangeObserver.disconnect();
-    currentFullscreenChangeObserver = null;
-  }
+  currentFullscreenChangeObserver?.disconnect();
+  currentFullscreenChangeObserver = null;
   // 新しいオブザーバーを開始
   const observer = new MutationObserver(onFullscreenChange);
   observer.observe(fullscreenTarget, { childList: true, subtree: false });
@@ -54,10 +55,8 @@ const startFullscreenChangeObserver = (fullscreenTarget: Element): void => {
 // ボタン探索監視を開始する関数
 const startFindButtonObserver = (container: Element): void => {
   // 古いオブザーバーを停止
-  if (currentFindButtonObserver) {
-    currentFindButtonObserver.disconnect();
-    currentFindButtonObserver = null;
-  }
+  currentFindButtonObserver?.disconnect();
+  currentFindButtonObserver = null;
   // 新しいオブザーバーを開始
   const buttonObserver = new MutationObserver(getButtonAndStartCheck);
   buttonObserver.observe(container, { childList: true, subtree: false });
@@ -105,6 +104,27 @@ const getButtonContainerAndStartObserver = (
   startNextObservers(elements);
 };
 
+// コンテナ監視で扱う各オブザーバーを停止して状態を初期化する関数
+const resetObservers = (): void => {
+  // 必要要素の待機監視を停止
+  currentInitElementsObserver?.disconnect();
+  currentInitElementsObserver = null;
+
+  // ボタン探索監視を停止
+  currentFindButtonObserver?.disconnect();
+  currentFindButtonObserver = null;
+
+  // フルスクリーン変更監視を停止
+  currentFullscreenChangeObserver?.disconnect();
+  currentFullscreenChangeObserver = null;
+
+  // 状態を破棄
+  prevButtonElement = null;
+
+  // ボタンの監視を停止
+  resetButtonObservers();
+};
+
 // コンテナ監視初期化を実行する関数
 const init = (): void => {
   // 対象URL以外は処理しない
@@ -112,11 +132,9 @@ const init = (): void => {
     return;
   }
 
-  // 古いオブザーバーを停止
-  if (currentInitElementsObserver) {
-    currentInitElementsObserver.disconnect();
-    currentInitElementsObserver = null;
-  }
+  // init再実行時に待機監視が重複しないよう停止して参照を破棄
+  currentInitElementsObserver?.disconnect();
+  currentInitElementsObserver = null;
 
   // 必要な要素を取得
   const elements = getRequiredElements();
@@ -140,4 +158,4 @@ const init = (): void => {
 };
 
 // エクスポート
-export { init };
+export { init, resetObservers };

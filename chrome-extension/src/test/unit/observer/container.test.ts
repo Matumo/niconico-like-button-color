@@ -21,9 +21,11 @@ type DomState = {
 // コンテナ監視が参照する依存モジュールをまとめて差し替え
 const mockContainerDeps = ({
   startButtonCheckObserver,
+  resetButtonObservers,
   debug,
 }: {
   startButtonCheckObserver: ReturnType<typeof vi.fn>;
+  resetButtonObservers?: ReturnType<typeof vi.fn>;
   debug?: ReturnType<typeof vi.fn>;
 }): void => {
   vi.doMock("@main/config/config", () => ({
@@ -32,6 +34,7 @@ const mockContainerDeps = ({
   }));
   vi.doMock("@main/observer/button", () => ({
     startButtonCheckObserver,
+    resetObservers: resetButtonObservers ?? vi.fn(),
   }));
   vi.doMock("@main/util/logger", () => ({
     default: { debug: debug ?? vi.fn() },
@@ -219,5 +222,78 @@ describe("コンテナ監視", () => {
     expect(FakeMutationObserver.instances).toHaveLength(4);
     expect(startButtonCheckObserver).toHaveBeenCalledTimes(1);
     expect(startButtonCheckObserver).toHaveBeenCalledWith(readyButton);
+  });
+
+  it("resetObserversでオブザーバーを停止した後に同一ボタンでも再初期化できる", async () => {
+    // 監視開始処理とボタン監視リセット処理のモックを準備
+    const startButtonCheckObserver = vi.fn();
+    const resetButtonObservers = vi.fn();
+    const button = {} as Element;
+    const state: DomState = {
+      href: "https://www.nicovideo.jp/watch/sm9",
+      button,
+      container: {} as Element,
+      fullscreenTarget: {} as Element,
+      body: {} as Element,
+      documentElement: {} as Element,
+    };
+
+    // テスト対象が参照する依存モジュールを差し替え
+    mockContainerDeps({ startButtonCheckObserver, resetButtonObservers });
+    setupContainerEnv(state);
+
+    // テスト対象をインポート
+    const { init, resetObservers } = await import("@main/observer/container");
+
+    // 監視開始後にresetObserversで既存監視が停止されることを確認
+    init();
+    expect(FakeMutationObserver.instances).toHaveLength(2);
+    expect(startButtonCheckObserver).toHaveBeenCalledTimes(1);
+
+    const fullscreenObserver = FakeMutationObserver.instances[0];
+    const findButtonObserver = FakeMutationObserver.instances[1];
+    resetObservers();
+
+    expect(fullscreenObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(findButtonObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(resetButtonObservers).toHaveBeenCalledTimes(1);
+
+    // reset後に同じボタン要素でも監視開始が再実行されることを確認
+    init();
+    expect(startButtonCheckObserver).toHaveBeenCalledTimes(2);
+    expect(startButtonCheckObserver).toHaveBeenLastCalledWith(button);
+  });
+
+  it("resetObserversでオブザーバーを停止する", async () => {
+    // 待機監視中の停止確認用モックを準備
+    const startButtonCheckObserver = vi.fn();
+    const resetButtonObservers = vi.fn();
+    const docElement = {} as Element;
+    const state: DomState = {
+      href: "https://www.nicovideo.jp/watch/sm9",
+      button: null,
+      container: null,
+      fullscreenTarget: null,
+      body: null,
+      documentElement: docElement,
+    };
+
+    // テスト対象が参照する依存モジュールを差し替え
+    mockContainerDeps({ startButtonCheckObserver, resetButtonObservers });
+    setupContainerEnv(state);
+
+    // テスト対象をインポート
+    const { init, resetObservers } = await import("@main/observer/container");
+
+    // 待機監視中にresetObserversを呼ぶと待機observerが停止されることを確認
+    init();
+    expect(FakeMutationObserver.instances).toHaveLength(1);
+
+    const initObserver = FakeMutationObserver.instances[0];
+    resetObservers();
+
+    expect(initObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(resetButtonObservers).toHaveBeenCalledTimes(1);
+    expect(startButtonCheckObserver).not.toHaveBeenCalled();
   });
 });

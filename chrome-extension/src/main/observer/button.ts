@@ -18,6 +18,12 @@ type ButtonState = {
 // 同時に複数監視しないよう最新の監視インスタンスを保持
 let currentButtonCheckObserver: MutationObserver | null = null;
 
+// ボタン監視オブザーバーを停止して状態を初期化する関数
+const resetObservers = (): void => {
+  currentButtonCheckObserver?.disconnect();
+  currentButtonCheckObserver = null;
+};
+
 // いいね状態を取得する関数
 const readCurrentStatus = (button: Element): boolean | null => {
   // ボタン状態はdataset.elementParamsにJSONで保持されている
@@ -66,9 +72,8 @@ const hasStateDiff = (
 // ボタン監視オブザーバーを差し替えて監視を開始する関数
 const replaceButtonCheckObserver = (button: Element, observer: MutationObserver): void => {
   // 古いオブザーバーを停止
-  if (currentButtonCheckObserver) {
-    currentButtonCheckObserver.disconnect();
-  }
+  currentButtonCheckObserver?.disconnect();
+  currentButtonCheckObserver = null;
   // 新しいオブザーバーを開始
   observer.observe(button, {
     attributes: true,
@@ -135,4 +140,4 @@ const startButtonCheckObserver = (button: Element): void => {
 };
 
 // エクスポート
-export { startButtonCheckObserver };
+export { startButtonCheckObserver, resetObservers };
