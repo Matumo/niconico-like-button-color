@@ -160,6 +160,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // アイコン色を変更
   async function setIconWithColor(hexColor) {
+    void hexColor;
     /*
     const svg = createSVGIcon(hexColor, "#808080", 1);
     // Canvasに描画してPNGに変換

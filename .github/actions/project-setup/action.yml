@@ -1,0 +1,39 @@
+name: Project setup
+description: Set up Node, and cache the pnpm store.
+
+inputs:
+  runs-on:
+    description: Optional runner label to use for cache key (falls back to runner.os)
+    required: false
+  node-version:
+    description: Node version to use (required)
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+    - uses: pnpm/action-setup@v4
+      name: Install pnpm
+    - name: Setup pnpm cache
+      id: pnpm_store
+      shell: bash
+      run: |
+        store_dir=$(pnpm store path)
+        echo "Resolved pnpm store dir: $store_dir"
+        if [ -z "$store_dir" ]; then
+          echo "pnpm store directory not resolved"
+          exit 1
+        fi
+        echo "dir=$store_dir" >> "$GITHUB_OUTPUT"
+    - name: Cache pnpm store
+      uses: actions/cache@v4
+      with:
+        path: ${{ steps.pnpm_store.outputs.dir }}
+        key: ${{ inputs.runs-on || runner.os }}-pnpm-store-${{ inputs.node-version }}-${{ hashFiles('**/pnpm-lock.yaml') }}
+    - name: Install dependencies
+      shell: bash
+      run: pnpm install --frozen-lockfile

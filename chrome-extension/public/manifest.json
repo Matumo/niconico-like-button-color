@@ -2,11 +2,11 @@
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
   "description": "__MSG_extensionDescription__",
-  "version": "1.0.6",
+  "version": "1.1.0",
   "permissions": ["storage"],
-  "options_page": "src/popup/options.html",
+  "options_page": "popup/options.html",
   "action": {
-    "default_popup": "src/popup/options.html",
+    "default_popup": "popup/options.html",
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png",
@@ -22,20 +22,14 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://www.nicovideo.jp/*"],
-      "js": [
-        "src/config/debug.js",
-        "src/config/config.js",
-        "src/config/storage.js",
-
-        "src/util/logger.js",
-
-        "src/observer/button.js",
-        "src/observer/container.js",
-        "src/observer/page.js",
-
-        "src/main.js"
-      ]
+      "js": ["src/main/main.js"],
+      "matches": ["https://www.nicovideo.jp/*"]
+    }
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["src/main/main.js.map"],
+      "matches": ["https://www.nicovideo.jp/*"]
     }
   ],
   "default_locale": "en"
