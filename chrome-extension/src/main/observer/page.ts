@@ -1,5 +1,9 @@
 /**
  * SPA遷移を含むURL変更を監視
+ *
+ * 1. popstateとDOM監視でURL変更を検知するオブザーバーを開始する
+ * 2. URL変更時にカスタムイベントを発火する
+ * 3. main.tsがイベントを受け取り、container.tsのオブザーバーをリセットして再び開始する
  */
 import { config } from "@main/config/config";
 import log from "@main/util/logger";
