@@ -176,34 +176,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   // ラジオボタンの初期状態を反映
   updateRadioButtonFunctionList.forEach((func) => func());
 
-  // アイコン色を変更
-  async function setIconWithColor(hexColor) {
-    void hexColor;
-    /*
-    const svg = createSVGIcon(hexColor, "#808080", 1);
-    // Canvasに描画してPNGに変換
-    const canvas = document.createElement("canvas");
-    canvas.width = 128;
-    canvas.height = 128;
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.src = `data:image/svg+xml;base64,${btoa(svg)}`;
-    // 画像が読み込まれたら描画する
-    return new Promise((resolve) => {
-      img.onload = () => {
-        ctx.drawImage(img, 0, 0);
-        canvas.toBlob((blob) => {
-          const objectUrl = URL.createObjectURL(blob);
-          // Chrome APIでアイコンを設定
-          chrome.action.setIcon({ path: objectUrl });
-          resolve();
-        });
-      };
-    });
-    */
-  }
-  setIconWithColor(likeButtonColor);
-
   // 保存ボタンがクリックされたときに選択した色を保存
   saveButton.addEventListener('click', () => {
     const selectedColor = document.querySelector('input[name="presetColor"]:checked').value;
@@ -212,6 +184,5 @@ document.addEventListener('DOMContentLoaded', async () => {
       const message = chrome.i18n.getMessage("savedMessage");
       messageDiv.textContent = message;
     });
-    setIconWithColor(selectedColor);
   });
 });
