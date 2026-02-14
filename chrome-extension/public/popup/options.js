@@ -15,28 +15,43 @@ document.addEventListener('DOMContentLoaded', async () => {
 
   // svg生成関数
   function createSVGIcon(fillColor, strokeColor = null, strokeWidth = 1.5) {
-    // 塗りつぶしのみのパス
-    const basePath = `
-      <path fill="${fillColor}" d="M11.52 20.87C11.13 20.65 2 15.31 2 8.8
-        2 6 3.91 3 7.45 3a4.6 4.6 0 0 1 4.3 2.96c.08.2.43.2.5 0
-        A4.7 4.7 0 0 1 16.54 3C20.09 3 22 6 22 8.8c0 6.51-9.13 11.85
-        -9.52 12.07a1 1 0 0 1-.96 0"></path>
-    `;
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('xmlns', SVG_NS);
+    svg.setAttribute('width', '128');
+    svg.setAttribute('height', '128');
+    svg.setAttribute('viewBox', '0 0 24 24');
+
     // 縁取りがある場合のパス
-    const outlinedPath = strokeColor
-      ? `<path fill="${strokeColor}" stroke="${strokeColor}" stroke-width="${strokeWidth}"
-           d="M11.52 20.87C11.13 20.65 2 15.31 2 8.8
-           2 6 3.91 3 7.45 3a4.6 4.6 0 0 1 4.3 2.96c.08.2.43.2.5 0
-           A4.7 4.7 0 0 1 16.54 3C20.09 3 22 6 22 8.8c0 6.51-9.13 11.85
-           -9.52 12.07a1 1 0 0 1-.96 0"></path>`
-      : "";
-    // マージして返す
-    return `
-      <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 24 24">
-        ${outlinedPath}
-        ${basePath}
-      </svg>
-    `;
+    if (strokeColor) {
+      const outlinedPath = document.createElementNS(SVG_NS, 'path');
+      outlinedPath.setAttribute('fill', strokeColor);
+      outlinedPath.setAttribute('stroke', strokeColor);
+      outlinedPath.setAttribute('stroke-width', String(strokeWidth));
+      outlinedPath.setAttribute(
+        'd',
+        'M11.52 20.87C11.13 20.65 2 15.31 2 8.8 ' +
+          '2 6 3.91 3 7.45 3a4.6 4.6 0 0 1 4.3 2.96c.08.2.43.2.5 0 ' +
+          'A4.7 4.7 0 0 1 16.54 3C20.09 3 22 6 22 8.8c0 6.51-9.13 11.85 ' +
+          '-9.52 12.07a1 1 0 0 1-.96 0'
+      );
+      svg.appendChild(outlinedPath);
+    }
+
+    // 塗りつぶしのみのパス
+    const basePath = document.createElementNS(SVG_NS, 'path');
+    basePath.setAttribute('fill', fillColor);
+    basePath.setAttribute(
+      'd',
+      'M11.52 20.87C11.13 20.65 2 15.31 2 8.8 ' +
+        '2 6 3.91 3 7.45 3a4.6 4.6 0 0 1 4.3 2.96c.08.2.43.2.5 0 ' +
+        'A4.7 4.7 0 0 1 16.54 3C20.09 3 22 6 22 8.8c0 6.51-9.13 11.85 ' +
+        '-9.52 12.07a1 1 0 0 1-.96 0'
+    );
+    svg.appendChild(basePath);
+
+    return svg;
   }
 
   // プリセットカラー
@@ -134,7 +149,10 @@ document.addEventListener('DOMContentLoaded', async () => {
       radioButton.value = color;
       radioButton.checked = true;
       updateRadioButtonFunctionList.forEach((func) => func());
-      svgIcon.innerHTML = createSVGIcon(color);
+      while (svgIcon.firstChild) {
+        svgIcon.removeChild(svgIcon.firstChild);
+      }
+      svgIcon.appendChild(createSVGIcon(color));
       labelText.textContent = `Custom (${color})`;
     });
 
