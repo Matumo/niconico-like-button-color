@@ -1,5 +1,9 @@
 /**
  * いいねボタンの状態監視とボタン色の同期機能
+ *
+ * container.tsからstartLikeButtonObserverが呼ばれたときに開始する
+ * 1. いいねボタンの属性・子要素変更を監視する
+ * 2. current状態とSVG要素の差分がある場合のみボタン色を更新する
  */
 import { storage } from "@main/config/storage";
 import log from "@main/util/logger";
