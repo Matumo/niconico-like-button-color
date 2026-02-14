@@ -1,8 +1,16 @@
 /**
- * 必要なDOM要素を検出し各監視オブザーバーを接続
+ * 必要なDOM要素を検出して各オブザーバーを実行する
+ *
+ * 実行開始時、またはURL変更時に以下の順で処理が実行される
+ * 1. 必要な要素が取得できるまで待機するオブザーバーを実行する
+ * 2. 必要な要素を取得したらフルスクリーン変更監視・ボタン探索監視を開始する
+ * 3. ボタン要素の変更を検知したらbutton.tsのボタン監視を開始する
  */
 import { config, selectors } from "@main/config/config";
-import { startButtonCheckObserver } from "@main/observer/button";
+import {
+  resetLikeButtonObservers,
+  startLikeButtonObserver,
+} from "@main/observer/button";
 import log from "@main/util/logger";
 
 // 監視開始に必要なDOM要素
@@ -28,7 +36,7 @@ const getButtonAndStartCheck = (): void => {
   prevButtonElement = button;
 
   // ボタンの監視を開始
-  startButtonCheckObserver(button);
+  startLikeButtonObserver(button);
 };
 
 // フルスクリーン変更時にボタン要素が変わるので再評価する関数
@@ -40,10 +48,8 @@ const onFullscreenChange = (): void => {
 // フルスクリーン変更監視を開始する関数
 const startFullscreenChangeObserver = (fullscreenTarget: Element): void => {
   // 古いオブザーバーを停止
-  if (currentFullscreenChangeObserver) {
-    currentFullscreenChangeObserver.disconnect();
-    currentFullscreenChangeObserver = null;
-  }
+  currentFullscreenChangeObserver?.disconnect();
+  currentFullscreenChangeObserver = null;
   // 新しいオブザーバーを開始
   const observer = new MutationObserver(onFullscreenChange);
   observer.observe(fullscreenTarget, { childList: true, subtree: false });
@@ -54,10 +60,8 @@ const startFullscreenChangeObserver = (fullscreenTarget: Element): void => {
 // ボタン探索監視を開始する関数
 const startFindButtonObserver = (container: Element): void => {
   // 古いオブザーバーを停止
-  if (currentFindButtonObserver) {
-    currentFindButtonObserver.disconnect();
-    currentFindButtonObserver = null;
-  }
+  currentFindButtonObserver?.disconnect();
+  currentFindButtonObserver = null;
   // 新しいオブザーバーを開始
   const buttonObserver = new MutationObserver(getButtonAndStartCheck);
   buttonObserver.observe(container, { childList: true, subtree: false });
@@ -105,18 +109,37 @@ const getButtonContainerAndStartObserver = (
   startNextObservers(elements);
 };
 
+// コンテナ監視で扱う各オブザーバーを停止して状態を初期化する関数
+const resetContainerObservers = (): void => {
+  // 必要要素の待機監視を停止
+  currentInitElementsObserver?.disconnect();
+  currentInitElementsObserver = null;
+
+  // ボタン探索監視を停止
+  currentFindButtonObserver?.disconnect();
+  currentFindButtonObserver = null;
+
+  // フルスクリーン変更監視を停止
+  currentFullscreenChangeObserver?.disconnect();
+  currentFullscreenChangeObserver = null;
+
+  // 状態を破棄
+  prevButtonElement = null;
+
+  // ボタンの監視を停止
+  resetLikeButtonObservers();
+};
+
 // コンテナ監視初期化を実行する関数
-const init = (): void => {
+const startContainerObservers = (): void => {
   // 対象URL以外は処理しない
   if (!config.nicoVideoPageUrlPatternRegExp.test(globalThis.location.href)) {
     return;
   }
 
-  // 古いオブザーバーを停止
-  if (currentInitElementsObserver) {
-    currentInitElementsObserver.disconnect();
-    currentInitElementsObserver = null;
-  }
+  // startContainerObservers再実行時に待機監視が重複しないよう停止して参照を破棄
+  currentInitElementsObserver?.disconnect();
+  currentInitElementsObserver = null;
 
   // 必要な要素を取得
   const elements = getRequiredElements();
@@ -140,4 +163,4 @@ const init = (): void => {
 };
 
 // エクスポート
-export { init };
+export { resetContainerObservers, startContainerObservers };
