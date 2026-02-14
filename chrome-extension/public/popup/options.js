@@ -101,7 +101,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     });
 
     const svgIcon = document.createElement('span');
-    svgIcon.innerHTML = createSVGIcon(color);
+    svgIcon.appendChild(createSVGIcon(color));
 
     const labelText = document.createElement('span');
     labelText.textContent = `${label} (${color})`;
@@ -125,7 +125,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                           presetColors.every(({ color }) => color !== likeButtonColor);
 
     const svgIcon = document.createElement('span');
-    svgIcon.innerHTML = createSVGIcon(customColor);
+    svgIcon.appendChild(createSVGIcon(customColor));
 
     const colorPicker = document.createElement('input');
     colorPicker.type = 'color';
