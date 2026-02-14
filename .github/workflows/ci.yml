@@ -1,0 +1,188 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main", "develop", "*" ]
+  pull_request:
+    branches: [ "main", "develop", "*" ]
+  schedule:
+    - cron: "0 10 * * *"
+  workflow_dispatch:
+
+jobs:
+  env:
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      default_os: ${{ steps.set.outputs.default_os }}
+      default_node: ${{ steps.set.outputs.default_node }}
+      matrix_os: ${{ steps.set.outputs.matrix_os }}
+      matrix_node: ${{ steps.set.outputs.matrix_node }}
+    steps:
+      - id: set
+        run: |
+          echo "default_os=ubuntu-24.04" >> "$GITHUB_OUTPUT"
+          echo "default_node=25.x" >> "$GITHUB_OUTPUT"
+          echo 'matrix_os=["ubuntu-24.04","ubuntu-24.04-arm","windows-2025","windows-11-arm","macos-15-intel","macos-26"]' >> "$GITHUB_OUTPUT"
+          echo 'matrix_node=["24.x","25.x"]' >> "$GITHUB_OUTPUT"
+  build:
+    needs: env
+    runs-on: ${{ needs.env.outputs.default_os }}
+    permissions:
+      contents: read
+    steps:
+      # Setup
+      - uses: actions/checkout@v6
+      - name: Prepare environment
+        uses: ./.github/actions/project-setup
+        with:
+          runs-on: ${{ needs.env.outputs.default_os }}
+          node-version: ${{ needs.env.outputs.default_node }}
+      # Build
+      - name: Build
+        run: pnpm run build
+      # Pack
+      - name: Pack extension
+        run: pnpm run pack
+      # Upload artifact
+      - name: Upload build artifact (zip)
+        uses: actions/upload-artifact@v6
+        with:
+          name: build-artifact-${{ needs.env.outputs.default_os }}
+          path: dist/chrome-extension.zip
+  check:
+    needs: env
+    runs-on: ${{ needs.env.outputs.default_os }}
+    permissions:
+      contents: read
+    steps:
+      # Setup
+      - uses: actions/checkout@v6
+      - name: Prepare environment
+        uses: ./.github/actions/project-setup
+        with:
+          runs-on: ${{ needs.env.outputs.default_os }}
+          node-version: ${{ needs.env.outputs.default_node }}
+      # Check
+      - name: Run Check
+        run: pnpm run check
+  unit-test-coverage:
+    needs: env
+    runs-on: ${{ needs.env.outputs.default_os }}
+    permissions:
+      contents: read
+    steps:
+      # Setup
+      - uses: actions/checkout@v6
+      - name: Prepare environment
+        uses: ./.github/actions/project-setup
+        with:
+          runs-on: ${{ needs.env.outputs.default_os }}
+          node-version: ${{ needs.env.outputs.default_node }}
+      # Unit Tests with coverage
+      - name: Run tests with coverage
+        run: pnpm run test:unit:coverage
+      # Upload coverage artifact
+      - name: Upload coverage artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: unit-test-coverage-${{ needs.env.outputs.default_os }}
+          path: coverage
+  browser-test-headless:
+    needs: env
+    strategy:
+      matrix:
+        os: ${{ fromJson(needs.env.outputs.matrix_os) }}
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    steps:
+      # Setup
+      - uses: actions/checkout@v6
+      - name: Prepare environment
+        uses: ./.github/actions/project-setup
+        with:
+          runs-on: ${{ matrix.os }}
+          node-version: ${{ needs.env.outputs.default_node }}
+      - name: Install Playwright browsers
+        env:
+          RETRIES: 3
+          WAIT_SECONDS: 10
+          RUN_CMD: pnpm run test:install
+        shell: bash
+        run: |
+          retries=${RETRIES:-3}
+          wait_seconds=${WAIT_SECONDS:-10}
+          run_cmd=${RUN_CMD:-"pnpm run test:install"}
+          for attempt in $(seq 1 "$retries"); do
+            if $run_cmd; then
+              break
+            fi
+            status=$?
+            if [ "$attempt" -lt "$retries" ]; then
+              echo "::warning::Command failed (attempt $attempt/$retries). Retrying in ${wait_seconds}s..."
+              sleep "$wait_seconds"
+            else
+              echo "::error::Command failed after $retries attempts."
+              exit "$status"
+            fi
+          done
+      # Tests
+      - name: Run browser integration tests (headless)
+        run: pnpm run test:browser:headless
+      # Upload browser test artifact
+      - name: Upload browser test artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-test-headless-artifact-${{ matrix.os }}
+          path: test-results
+  browser-test-integration:
+    needs: env
+    runs-on: ${{ needs.env.outputs.default_os }}
+    permissions:
+      contents: read
+    steps:
+      # Setup
+      - uses: actions/checkout@v6
+      - name: Prepare environment
+        uses: ./.github/actions/project-setup
+        with:
+          runs-on: ${{ needs.env.outputs.default_os }}
+          node-version: ${{ needs.env.outputs.default_node }}
+      # Ubuntu: xwd (x11-apps) + convert (imagemagick)
+      - name: Install deps (Ubuntu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y x11-apps imagemagick
+      - name: Install Playwright browsers
+        env:
+          RETRIES: 3
+          WAIT_SECONDS: 10
+          RUN_CMD: pnpm run test:install
+        shell: bash
+        run: |
+          retries=${RETRIES:-3}
+          wait_seconds=${WAIT_SECONDS:-10}
+          run_cmd=${RUN_CMD:-"pnpm run test:install"}
+          for attempt in $(seq 1 "$retries"); do
+            if $run_cmd; then
+              break
+            fi
+            status=$?
+            if [ "$attempt" -lt "$retries" ]; then
+              echo "::warning::Command failed (attempt $attempt/$retries). Retrying in ${wait_seconds}s..."
+              sleep "$wait_seconds"
+            else
+              echo "::error::Command failed after $retries attempts."
+              exit "$status"
+            fi
+          done
+      # Tests
+      - name: Run browser integration tests (xvfb)
+        run: pnpm run test:browser:xvfb
+      # Upload browser test artifact
+      - name: Upload browser test artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-test-integration-artifact-${{ needs.env.outputs.default_os }}
+          path: test-results
