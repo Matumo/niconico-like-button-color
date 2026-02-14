@@ -150,7 +150,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       radioButton.checked = true;
       updateRadioButtonFunctionList.forEach((func) => func());
       while (svgIcon.firstChild) {
-        svgIcon.removeChild(svgIcon.firstChild);
+        svgIcon.firstChild.remove();
       }
       svgIcon.appendChild(createSVGIcon(color));
       labelText.textContent = `Custom (${color})`;
