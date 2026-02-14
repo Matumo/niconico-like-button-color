@@ -3,8 +3,8 @@
  */
 import { config, selectors } from "@main/config/config";
 import {
-  resetObservers as resetButtonObservers,
-  startButtonCheckObserver,
+  resetLikeButtonObservers,
+  startLikeButtonObserver,
 } from "@main/observer/button";
 import log from "@main/util/logger";
 
@@ -31,7 +31,7 @@ const getButtonAndStartCheck = (): void => {
   prevButtonElement = button;
 
   // ボタンの監視を開始
-  startButtonCheckObserver(button);
+  startLikeButtonObserver(button);
 };
 
 // フルスクリーン変更時にボタン要素が変わるので再評価する関数
@@ -105,7 +105,7 @@ const getButtonContainerAndStartObserver = (
 };
 
 // コンテナ監視で扱う各オブザーバーを停止して状態を初期化する関数
-const resetObservers = (): void => {
+const resetContainerObservers = (): void => {
   // 必要要素の待機監視を停止
   currentInitElementsObserver?.disconnect();
   currentInitElementsObserver = null;
@@ -122,17 +122,17 @@ const resetObservers = (): void => {
   prevButtonElement = null;
 
   // ボタンの監視を停止
-  resetButtonObservers();
+  resetLikeButtonObservers();
 };
 
 // コンテナ監視初期化を実行する関数
-const init = (): void => {
+const startContainerObservers = (): void => {
   // 対象URL以外は処理しない
   if (!config.nicoVideoPageUrlPatternRegExp.test(globalThis.location.href)) {
     return;
   }
 
-  // init再実行時に待機監視が重複しないよう停止して参照を破棄
+  // startContainerObservers再実行時に待機監視が重複しないよう停止して参照を破棄
   currentInitElementsObserver?.disconnect();
   currentInitElementsObserver = null;
 
@@ -158,4 +158,4 @@ const init = (): void => {
 };
 
 // エクスポート
-export { init, resetObservers };
+export { resetContainerObservers, startContainerObservers };

@@ -11,8 +11,8 @@ describe("メイン初期化", () => {
   it("bootstrapを実行してURL変更イベントに反応する", async () => {
     // bootstrap内で呼ばれる処理を観測するためのモックを準備
     const fetchLikeButtonColor = vi.fn().mockResolvedValue("#FF8FA8");
-    const init = vi.fn();
-    const resetObservers = vi.fn();
+    const startContainerObservers = vi.fn();
+    const resetContainerObservers = vi.fn();
     const startPageUrlObserver = vi.fn();
     const debug = vi.fn();
     const listeners: Record<string, () => void> = {};
@@ -27,8 +27,8 @@ describe("メイン初期化", () => {
       storage: { fetchLikeButtonColor },
     }));
     vi.doMock("@main/observer/container", () => ({
-      init,
-      resetObservers,
+      startContainerObservers,
+      resetContainerObservers,
     }));
     vi.doMock("@main/observer/page", () => ({
       startPageUrlObserver,
@@ -51,18 +51,18 @@ describe("メイン初期化", () => {
     // 初期化処理が期待通り実行されていることを検証
     expect(fetchLikeButtonColor).toHaveBeenCalledTimes(1);
     expect(startPageUrlObserver).toHaveBeenCalledTimes(1);
-    expect(init).toHaveBeenCalledTimes(1);
-    expect(resetObservers).not.toHaveBeenCalled();
+    expect(startContainerObservers).toHaveBeenCalledTimes(1);
+    expect(resetContainerObservers).not.toHaveBeenCalled();
 
     // 登録済みハンドラーを直接呼び、再初期化経路を検証
     listeners["mock:url:changed"]?.();
 
     // URL変更イベント時のログ出力と再初期化を検証
     expect(debug).toHaveBeenCalledWith("Change nico video page URL event.");
-    expect(resetObservers).toHaveBeenCalledTimes(1);
-    expect(init).toHaveBeenCalledTimes(2);
-    expect(resetObservers.mock.invocationCallOrder[0]).toBeLessThan(
-      init.mock.invocationCallOrder[1],
+    expect(resetContainerObservers).toHaveBeenCalledTimes(1);
+    expect(startContainerObservers).toHaveBeenCalledTimes(2);
+    expect(resetContainerObservers.mock.invocationCallOrder[0]).toBeLessThan(
+      startContainerObservers.mock.invocationCallOrder[1],
     );
   });
 });

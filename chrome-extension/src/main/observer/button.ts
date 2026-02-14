@@ -19,7 +19,7 @@ type ButtonState = {
 let currentButtonCheckObserver: MutationObserver | null = null;
 
 // ボタン監視オブザーバーを停止して状態を初期化する関数
-const resetObservers = (): void => {
+const resetLikeButtonObservers = (): void => {
   currentButtonCheckObserver?.disconnect();
   currentButtonCheckObserver = null;
 };
@@ -110,7 +110,7 @@ const updateSvgColor = (currentState: ButtonState, previousState: ButtonState): 
 };
 
 // いいねボタン監視オブザーバーを開始する関数
-const startButtonCheckObserver = (button: Element): void => {
+const startLikeButtonObserver = (button: Element): void => {
   // クリック後の再描画で要素が置き換わるため直近状態を保持
   const previousState: ButtonState = {
     svgPath: null,
@@ -140,4 +140,4 @@ const startButtonCheckObserver = (button: Element): void => {
 };
 
 // エクスポート
-export { startButtonCheckObserver, resetObservers };
+export { startLikeButtonObserver, resetLikeButtonObservers };

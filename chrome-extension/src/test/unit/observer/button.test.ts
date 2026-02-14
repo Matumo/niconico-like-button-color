@@ -76,7 +76,7 @@ describe("ボタン監視", () => {
     vi.stubGlobal("MutationObserver", FakeMutationObserver);
 
     // テスト対象をインポート
-    const { startButtonCheckObserver } = await import("@main/observer/button");
+    const { startLikeButtonObserver } = await import("@main/observer/button");
 
     // current=true（いいね有り）の状態で初回色適用と監視開始を検証
     const state1: ButtonState = {
@@ -84,7 +84,7 @@ describe("ボタン監視", () => {
       path: createPath(),
     };
     const button1 = createButton(state1); // 初回監視対象のボタン
-    startButtonCheckObserver(button1); // 監視開始（初期色適用とobserver登録）
+    startLikeButtonObserver(button1); // 監視開始（初期色適用とobserver登録）
 
     // current=true（いいね有り）なのでfill属性に保存色が設定されることを確認
     expect(state1.path?.setAttribute).toHaveBeenCalledWith("fill", "#AA22BB");
@@ -143,14 +143,14 @@ describe("ボタン監視", () => {
       path: createPath(),
     };
     const button2 = createButton(state2);
-    startButtonCheckObserver(button2);
+    startLikeButtonObserver(button2);
 
     expect(firstObserver.disconnect).toHaveBeenCalledTimes(1);
     expect(state2.path?.removeAttribute).toHaveBeenCalledWith("fill");
     expect(warn).not.toHaveBeenCalled();
   });
 
-  it("resetObserversでオブザーバー停止を多重呼び出しでも壊れない", async () => {
+  it("resetLikeButtonObserversでオブザーバー停止を多重呼び出しでも壊れない", async () => {
     // ログ出力と色情報取得のモックを準備
     const debug = vi.fn();
     const warn = vi.fn();
@@ -166,22 +166,22 @@ describe("ボタン監視", () => {
     vi.stubGlobal("MutationObserver", FakeMutationObserver);
 
     // テスト対象をインポート
-    const { resetObservers, startButtonCheckObserver } = await import("@main/observer/button");
+    const { resetLikeButtonObservers, startLikeButtonObserver } = await import("@main/observer/button");
 
-    // 監視開始後にresetObserversで切断されることを確認
+    // 監視開始後にresetLikeButtonObserversで切断されることを確認
     const state: ButtonState = {
       params: "{\"current\":true}",
       path: createPath(),
     };
-    startButtonCheckObserver(createButton(state));
+    startLikeButtonObserver(createButton(state));
     expect(FakeMutationObserver.instances).toHaveLength(1);
 
     const observer = FakeMutationObserver.instances[0];
-    resetObservers();
+    resetLikeButtonObservers();
     expect(observer.disconnect).toHaveBeenCalledTimes(1);
 
     // 連続呼び出ししても追加の切断や例外が発生しないことを確認
-    resetObservers();
+    resetLikeButtonObservers();
     expect(observer.disconnect).toHaveBeenCalledTimes(1);
   });
 
@@ -200,14 +200,14 @@ describe("ボタン監視", () => {
     vi.stubGlobal("MutationObserver", FakeMutationObserver);
 
     // テスト対象をインポート
-    const { startButtonCheckObserver } = await import("@main/observer/button");
+    const { startLikeButtonObserver } = await import("@main/observer/button");
 
     // 参照データが不足している場合は処理をスキップすることを確認
     const missingState: ButtonState = {
       params: null,
       path: null,
     };
-    startButtonCheckObserver(createButton(missingState));
+    startLikeButtonObserver(createButton(missingState));
 
     expect(debug).toHaveBeenCalledWith("Skipping update. svgPath or currentStatus is missing.");
 
@@ -216,7 +216,7 @@ describe("ボタン監視", () => {
       params: "{not-json}",
       path: createPath(),
     };
-    startButtonCheckObserver(createButton(invalidState));
+    startLikeButtonObserver(createButton(invalidState));
 
     expect(warn).toHaveBeenCalledWith(
       "Failed to parse data-element-params:",
