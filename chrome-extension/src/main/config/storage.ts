@@ -2,17 +2,21 @@
  * ブラウザに保存された設定の取得・参照機能
  */
 import log from "@main/util/logger";
+import {
+  defaultLikeButtonColor,
+  likeButtonColorStorageKey,
+  normalizeLikeButtonColor,
+} from "@main/shared/like-button-settings";
 
-// デフォルト色
-const defaultLikeButtonColor = "#FF8FA8";
 // 現在の設定値（メモリキャッシュ）
 let currentLikeButtonColor = defaultLikeButtonColor;
 
 // ブラウザから色設定を取得して現在値を更新する関数
 const fetchLikeButtonColor = async (): Promise<string> => {
-  const result = await chrome.storage.local.get({ likeButtonColor: defaultLikeButtonColor });
-  currentLikeButtonColor = typeof result.likeButtonColor === "string" ?
-    result.likeButtonColor : defaultLikeButtonColor; // 設定値がない場合はデフォルト値を使用
+  const result = await chrome.storage.local.get({
+    [likeButtonColorStorageKey]: defaultLikeButtonColor,
+  });
+  currentLikeButtonColor = normalizeLikeButtonColor(result.likeButtonColor);
   log.debug("likeButtonColor loaded:", currentLikeButtonColor);
   return currentLikeButtonColor;
 };
