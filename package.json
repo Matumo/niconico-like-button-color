@@ -42,6 +42,7 @@
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
     "jiti": "^2.7.0",
+    "jsdom": "^27.0.1",
     "pngjs": "^7.0.0",
     "postcss-selector-parser": "^7.1.4",
     "rimraf": "^6.1.3",
