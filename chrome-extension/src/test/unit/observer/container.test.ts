@@ -1,24 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeMutationObserver } from "@test/unit/observer/helpers/fake-mutation-observer";
 
-const WATCH_URL_PATTERN = /^https:\/\/www\.nicovideo\.jp\/watch\/.+$/;
+// 実装の分岐だけを検証するため、実CSSではなく用途が判別しやすい固定値を使う
+// selector自体の妥当性はconfig.test.ts、実DOMとの結合はbrowser-headlessで検証する
 const TEST_SELECTORS = {
-  likeButton: "sel:button",
-  likeButtonContainer: "sel:container",
+  likeButton: "sel:watch-button",
+  likeButtonContainer: "sel:watch-container",
   fullscreenChangeTarget: "sel:fullscreen",
+  shortsActiveEntry: "sel:shorts-active",
+  shortsLikeButton: "sel:shorts-like",
 };
 
-// コンテナ監視テストで参照するDOM状態
+// MutationObserver発火の前後で書き換える仮想DOM状態
+// querySelectorの返り値をstate経由にし、DOM差し替えを同期的に再現する
 type DomState = {
   href: string;
-  button: Element | null;
-  container: Element | null;
+  watchButton: Element | null;
+  watchContainer: Element | null;
   fullscreenTarget: Element | null;
+  shortsActiveEntry: Element | null;
   body: Element | null;
   documentElement: Element;
 };
 
-// コンテナ監視が参照する依存モジュールをまとめて差し替え
+// container.tsの分岐だけに焦点を当てる最小URLパターン
+// 正規表現そのものの境界値はconfig.test.tsで実configに対して検証する
+const WATCH_URL_PATTERN = /^https:\/\/www\.nicovideo\.jp\/watch\/.+$/;
+const SHORTS_URL_PATTERN = /^https:\/\/www\.nicovideo\.jp\/shorts\/.+$/;
+
+// container.tsはモジュールスコープにobserver参照を持つため、import前に依存を差し替え、
+// button監視の開始・解除とログ出力だけを観測可能にする
 const mockContainerDeps = ({
   startLikeButtonObserver,
   resetLikeButtonObservers,
@@ -29,7 +40,10 @@ const mockContainerDeps = ({
   debug?: ReturnType<typeof vi.fn>;
 }): void => {
   vi.doMock("@main/config/config", () => ({
-    config: { nicoVideoPageUrlPatternRegExp: WATCH_URL_PATTERN },
+    config: {
+      nicoVideoPageUrlPatternRegExp: WATCH_URL_PATTERN,
+      nicoShortsPageUrlPatternRegExp: SHORTS_URL_PATTERN,
+    },
     selectors: TEST_SELECTORS,
   }));
   vi.doMock("@main/observer/button", () => ({
@@ -41,31 +55,20 @@ const mockContainerDeps = ({
   }));
 };
 
-// windowとdocumentのモックを状態付きで初期化
+// jsdomへ依存せず、container.tsが読むglobalだけをstate付きで用意する
+// FakeMutationObserverはobserve条件、disconnect、任意タイミングのcallback発火を記録する
 const setupContainerEnv = (state: DomState): void => {
-  // location.hrefを書き換え可能にしてURL条件分岐を再現
-  const location = {
+  vi.stubGlobal("location", {
     get href(): string {
       return state.href;
     },
-    set href(value: string) {
-      state.href = value;
-    },
-  };
-
-  vi.stubGlobal("location", location);
+  });
   vi.stubGlobal("document", {
     querySelector: vi.fn((selector: string) => {
-      // 実装側のセレクタに応じて現在状態を返す
-      if (selector === "sel:button") {
-        return state.button;
-      }
-      if (selector === "sel:container") {
-        return state.container;
-      }
-      if (selector === "sel:fullscreen") {
-        return state.fullscreenTarget;
-      }
+      if (selector === TEST_SELECTORS.likeButton) return state.watchButton;
+      if (selector === TEST_SELECTORS.likeButtonContainer) return state.watchContainer;
+      if (selector === TEST_SELECTORS.fullscreenChangeTarget) return state.fullscreenTarget;
+      if (selector === TEST_SELECTORS.shortsActiveEntry) return state.shortsActiveEntry;
       return null;
     }),
     get body(): Element | null {
@@ -78,217 +81,337 @@ const setupContainerEnv = (state: DomState): void => {
   vi.stubGlobal("MutationObserver", FakeMutationObserver);
 };
 
+// 同じrootのままactive entryだけが切り替わる、実サイトの仮想playlistを再現する
+// callback発火時には必ずstate上の最新active entryを返す
+const createPlaylistRoot = (state: DomState): Element =>
+  ({
+    querySelector: vi.fn((selector: string) =>
+      selector === TEST_SELECTORS.shortsActiveEntry ? state.shortsActiveEntry : null,
+    ),
+  }) as unknown as Element;
+
+// parentElementの有無とshorts likeのmount/unmountを個別に制御する最小entry
+// button=nullは、likeを持たない広告またはロード中のactive entryを表す
+const createShortsEntry = (playlistRoot: Element | null, button: Element | null): Element =>
+  ({
+    parentElement: playlistRoot,
+    querySelector: vi.fn((selector: string) =>
+      selector === TEST_SELECTORS.shortsLikeButton ? button : null,
+    ),
+  }) as unknown as Element;
+
 describe("コンテナ監視", () => {
   beforeEach(() => {
-    // モジュールとモックをリセット
+    // module cacheとglobal、FakeMutationObserverの生成履歴をケース間で共有しない
+    // これによりobserverの生成順とdisconnect回数を意味のあるassert対象に保つ
     vi.resetModules();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
-    // FakeMutationObserverのインスタンス履歴をリセット
     FakeMutationObserver.reset();
   });
 
   it("監視対象外URLでは即時終了する", async () => {
-    // ボタン監視開始処理のモックを準備
     const startLikeButtonObserver = vi.fn();
-
-    // テスト対象が参照する依存モジュールを差し替え
     mockContainerDeps({ startLikeButtonObserver });
-
     setupContainerEnv({
       href: "https://example.com",
-      button: {} as Element,
-      container: {} as Element,
+      watchButton: {} as Element,
+      watchContainer: {} as Element,
       fullscreenTarget: {} as Element,
+      shortsActiveEntry: null,
       body: {} as Element,
       documentElement: {} as Element,
     });
 
-    // テスト対象をインポート
     const { startContainerObservers } = await import("@main/observer/container");
-
-    // URLが対象外ならobserverが一つも作られないことを確認
+    // 対象DOMが存在していても、対象外URLなら監視を一切作らない
     startContainerObservers();
+
     expect(FakeMutationObserver.instances).toHaveLength(0);
     expect(startLikeButtonObserver).not.toHaveBeenCalled();
   });
 
-  it("必要要素が揃っている場合に監視を開始する", async () => {
-    // 監視開始処理とログ出力のモックを準備
+  it("watchの必要要素が揃っている場合に既存監視を開始・差し替えする", async () => {
     const startLikeButtonObserver = vi.fn();
     const debug = vi.fn();
     const firstButton = {} as Element;
     const secondButton = {} as Element;
-
     const state: DomState = {
       href: "https://www.nicovideo.jp/watch/sm9",
-      button: firstButton,
-      container: {} as Element,
+      watchButton: firstButton,
+      watchContainer: {} as Element,
       fullscreenTarget: {} as Element,
+      shortsActiveEntry: null,
       body: {} as Element,
       documentElement: {} as Element,
     };
-
-    // テスト対象が参照する依存モジュールを差し替え
     mockContainerDeps({ startLikeButtonObserver, debug });
     setupContainerEnv(state);
 
-    // テスト対象をインポート
     const { startContainerObservers } = await import("@main/observer/container");
-
-    // 1回目startContainerObserversでfullscreen監視とbutton探索監視が開始されることを確認
+    // 初回startでfullscreen監視・button探索監視を作り、現在のbuttonへ即時バインドする
     startContainerObservers();
-    expect(FakeMutationObserver.instances).toHaveLength(2);
-    expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
-    expect(startLikeButtonObserver).toHaveBeenCalledWith(firstButton);
 
+    expect(FakeMutationObserver.instances).toHaveLength(2);
+    expect(startLikeButtonObserver).toHaveBeenCalledWith(firstButton);
     const firstFullscreenObserver = FakeMutationObserver.instances[0];
     const firstFindButtonObserver = FakeMutationObserver.instances[1];
 
-    // 2回目startContainerObserversでは既存observerが切断され新しいobserverに置き換わることを確認
+    // URLイベントの重複を想定し、再startで古いDOM observerだけが破棄されることを確認する
     startContainerObservers();
-    expect(FakeMutationObserver.instances).toHaveLength(4);
     expect(firstFullscreenObserver.disconnect).toHaveBeenCalledTimes(1);
     expect(firstFindButtonObserver.disconnect).toHaveBeenCalledTimes(1);
     expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
 
-    const secondFullscreenObserver = FakeMutationObserver.instances[2];
-    const secondFindButtonObserver = FakeMutationObserver.instances[3];
-
-    // secondFullscreenObserverは再startContainerObservers後に登録されたfullscreen監視
-    // ボタンが見つからない状態ではstartLikeButtonObserverが増えないことを確認
-    state.button = null;
-    secondFullscreenObserver.trigger();
+    const nextFullscreenObserver = FakeMutationObserver.instances[2];
+    const nextFindButtonObserver = FakeMutationObserver.instances[3];
+    // フルスクリーン切替中にbuttonが一時消えても、存在しない要素へバインドしない
+    // watch経路では従来どおり、後続mutationで新buttonが現れるのを待つ
+    state.watchButton = null;
+    nextFullscreenObserver.trigger();
     expect(debug).toHaveBeenCalledWith("Fullscreen change detected.");
-    expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
 
-    // ボタン差し替え後は再度startLikeButtonObserverが呼ばれることを確認
-    state.button = secondButton;
-    secondFullscreenObserver.trigger();
+    // 新button出現後は再バインドする
+    // 同じDOMを二つのobserverが検出しても、prevButtonElementによりstartLikeButtonObserverは一度しか呼ばれない
+    state.watchButton = secondButton;
+    nextFullscreenObserver.trigger();
+    nextFindButtonObserver.trigger();
     expect(startLikeButtonObserver).toHaveBeenCalledTimes(2);
     expect(startLikeButtonObserver).toHaveBeenLastCalledWith(secondButton);
-
-    // secondFindButtonObserverが発火してもbutton監視を重複開始しないことを確認
-    secondFindButtonObserver.trigger();
-    expect(startLikeButtonObserver).toHaveBeenCalledTimes(2);
   });
 
-  it("bodyがない場合はdocumentElementで待機する", async () => {
-    // 監視開始処理のモックと待機復帰用の要素を準備
+  it("watchの必要要素をdocumentElementで待機してから監視を開始する", async () => {
     const startLikeButtonObserver = vi.fn();
     const readyButton = {} as Element;
     const docElement = {} as Element;
     const state: DomState = {
       href: "https://www.nicovideo.jp/watch/sm9",
-      button: readyButton,
-      container: null,
+      watchButton: readyButton,
+      watchContainer: null,
       fullscreenTarget: null,
+      shortsActiveEntry: null,
       body: null,
       documentElement: docElement,
     };
-
-    // テスト対象が参照する依存モジュールを差し替え
     mockContainerDeps({ startLikeButtonObserver });
     setupContainerEnv(state);
 
-    // テスト対象をインポート
     const { startContainerObservers } = await import("@main/observer/container");
-
-    // body不在時はdocumentElement監視へフォールバックすることを確認
+    // bootstrap直後でbodyがまだ無いケース
+    // documentElementを監視rootへフォールバックする
+    // button自体はあっても、containerとfullscreen targetが揃うまでは次段へ進まない
     startContainerObservers();
-    expect(FakeMutationObserver.instances).toHaveLength(1);
-    expect(FakeMutationObserver.instances[0].observe).toHaveBeenCalledWith(docElement, {
+    const initObserver = FakeMutationObserver.instances[0];
+    expect(initObserver.observe).toHaveBeenCalledWith(docElement, {
       childList: true,
       subtree: true,
     });
 
-    // 待機中に再度startContainerObserversした場合も古い待機observerを切断することを確認
-    startContainerObservers();
-    expect(FakeMutationObserver.instances[0].disconnect).toHaveBeenCalledTimes(1);
-    expect(FakeMutationObserver.instances).toHaveLength(2);
-
-    const initElementsObserver = FakeMutationObserver.instances[1];
-
-    // containerのみ揃った段階ではまだ次段監視へ進まないことを確認
-    state.container = {} as Element;
-    initElementsObserver.trigger();
+    // containerだけが先に生成された段階では待機observerを維持する
+    state.watchContainer = {} as Element;
+    initObserver.trigger();
     expect(startLikeButtonObserver).not.toHaveBeenCalled();
 
-    // 必要要素が揃った時点で待機observerを終了し次段へ移行することを確認
+    // 最後の必須要素が揃った時点で待機を終了し、watch用の二つのobserverへ移行する
     state.fullscreenTarget = {} as Element;
-    initElementsObserver.trigger();
-
-    expect(initElementsObserver.disconnect).toHaveBeenCalledTimes(1);
-    expect(FakeMutationObserver.instances).toHaveLength(4);
-    expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
+    initObserver.trigger();
+    expect(initObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(FakeMutationObserver.instances).toHaveLength(3);
     expect(startLikeButtonObserver).toHaveBeenCalledWith(readyButton);
   });
 
-  it("resetContainerObserversでオブザーバーを停止した後に同一ボタンでも再初期化できる", async () => {
-    // 監視開始処理とボタン監視リセット処理のモックを準備
+  it("shortsのactive entryを継続監視し、通常切替・広告・復帰へ追従する", async () => {
     const startLikeButtonObserver = vi.fn();
     const resetLikeButtonObservers = vi.fn();
-    const button = {} as Element;
     const state: DomState = {
-      href: "https://www.nicovideo.jp/watch/sm9",
-      button,
-      container: {} as Element,
-      fullscreenTarget: {} as Element,
+      href: "https://www.nicovideo.jp/shorts/ss1",
+      watchButton: null,
+      watchContainer: null,
+      fullscreenTarget: null,
+      shortsActiveEntry: null,
       body: {} as Element,
       documentElement: {} as Element,
     };
-
-    // テスト対象が参照する依存モジュールを差し替え
+    // playlist rootは維持したままactive entry/buttonだけを差し替える
+    // first/second/thirdは通常short、button=nullは広告entryを表す
+    const playlistRoot = createPlaylistRoot(state);
+    const firstButton = {} as Element;
+    const secondButton = {} as Element;
+    const thirdButton = {} as Element;
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, firstButton);
     mockContainerDeps({ startLikeButtonObserver, resetLikeButtonObservers });
     setupContainerEnv(state);
 
-    // テスト対象をインポート
-    const { startContainerObservers, resetContainerObservers } = await import("@main/observer/container");
-
-    // 監視開始後にresetContainerObserversで既存監視が停止されることを確認
+    const { startContainerObservers } = await import("@main/observer/container");
+    // active entryが初めからある場合は待機observerを作らずplaylist監視へ直行する
     startContainerObservers();
-    expect(FakeMutationObserver.instances).toHaveLength(2);
+    const playlistObserver = FakeMutationObserver.instances[0];
+
+    expect(playlistObserver.observe).toHaveBeenCalledWith(playlistRoot, {
+      attributes: true,
+      attributeFilter: ["data-playlist-state"],
+      childList: true,
+      subtree: true,
+    });
+    expect(startLikeButtonObserver).toHaveBeenCalledWith(firstButton);
+
+    // 同じactive buttonのまま無関係なmutationが来ても二重バインドしない
+    playlistObserver.trigger();
     expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
 
-    const fullscreenObserver = FakeMutationObserver.instances[0];
-    const findButtonObserver = FakeMutationObserver.instances[1];
-    resetContainerObservers();
+    // 通常short切替: 新しいactive buttonへ監視対象を移す
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, secondButton);
+    playlistObserver.trigger();
+    expect(startLikeButtonObserver).toHaveBeenLastCalledWith(secondButton);
 
-    expect(fullscreenObserver.disconnect).toHaveBeenCalledTimes(1);
-    expect(findButtonObserver.disconnect).toHaveBeenCalledTimes(1);
+    // 広告切替: URLは変化しないがactive entryからlikeが消えるため、
+    // 旧shortのbutton observerを明示的に解除する
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, null);
+    playlistObserver.trigger();
     expect(resetLikeButtonObservers).toHaveBeenCalledTimes(1);
 
-    // reset後に同じボタン要素でも監視開始が再実行されることを確認
+    // 広告中の追加mutationでは、解除済みobserverを何度もresetしない
+    playlistObserver.trigger();
+    expect(resetLikeButtonObservers).toHaveBeenCalledTimes(1);
+
+    // 広告終了: 次の通常shortにlikeがmountされたら新buttonへ再バインドする
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, thirdButton);
+    playlistObserver.trigger();
+    expect(startLikeButtonObserver).toHaveBeenCalledTimes(3);
+    expect(startLikeButtonObserver).toHaveBeenLastCalledWith(thirdButton);
+  });
+
+  it("shortsのactive entryと親要素の出現を待ってからplaylist監視へ移る", async () => {
+    const startLikeButtonObserver = vi.fn();
+    const resetLikeButtonObservers = vi.fn();
+    const docElement = {} as Element;
+    const state: DomState = {
+      href: "https://www.nicovideo.jp/shorts/ss1",
+      watchButton: null,
+      watchContainer: null,
+      fullscreenTarget: null,
+      shortsActiveEntry: null,
+      body: null,
+      documentElement: docElement,
+    };
+    mockContainerDeps({ startLikeButtonObserver, resetLikeButtonObservers });
+    setupContainerEnv(state);
+
+    const { startContainerObservers } = await import("@main/observer/container");
+    // 個別shortへリダイレクト済みだが、bodyがまだ無い初期描画を想定する
+    // documentElement上でactive属性・子要素の両方を監視し、playlist生成を待つ
+    startContainerObservers();
+    const initObserver = FakeMutationObserver.instances[0];
+    expect(initObserver.observe).toHaveBeenCalledWith(docElement, {
+      attributes: true,
+      attributeFilter: ["data-playlist-state"],
+      childList: true,
+      subtree: true,
+    });
+
+    // active entryだけ先に見えてもparentElementが無ければ、安定した監視rootを作れない
+    // この段階では待機を継続し、存在しないbutton observerをresetしない
+    state.shortsActiveEntry = createShortsEntry(null, null);
+    initObserver.trigger();
+    expect(FakeMutationObserver.instances).toHaveLength(1);
+    expect(resetLikeButtonObservers).not.toHaveBeenCalled();
+
+    // entryがplaylistへ接続された時点で待機observerからplaylist observerへ移行する
+    const playlistRoot = createPlaylistRoot(state);
+    const button = {} as Element;
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, button);
+    initObserver.trigger();
+
+    expect(initObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(FakeMutationObserver.instances).toHaveLength(2);
+    expect(startLikeButtonObserver).toHaveBeenCalledWith(button);
+  });
+
+  it("shortsが広告entryから始まる場合は不要なbutton resetを行わない", async () => {
+    const startLikeButtonObserver = vi.fn();
+    const resetLikeButtonObservers = vi.fn();
+    const state: DomState = {
+      href: "https://www.nicovideo.jp/shorts/ss1",
+      watchButton: null,
+      watchContainer: null,
+      fullscreenTarget: null,
+      shortsActiveEntry: null,
+      body: {} as Element,
+      documentElement: {} as Element,
+    };
+    // 初期表示が広告の場合は「以前のbutton」が存在しないため、
+    // playlistは監視するがresetLikeButtonObserversを無駄に呼ばない
+    const playlistRoot = createPlaylistRoot(state);
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, null);
+    mockContainerDeps({ startLikeButtonObserver, resetLikeButtonObservers });
+    setupContainerEnv(state);
+
+    const { startContainerObservers } = await import("@main/observer/container");
+    startContainerObservers();
+
+    expect(FakeMutationObserver.instances).toHaveLength(1);
+    expect(startLikeButtonObserver).not.toHaveBeenCalled();
+    expect(resetLikeButtonObservers).not.toHaveBeenCalled();
+  });
+
+  it("多重startとresetで全observerを停止し、同一ボタンでも再初期化できる", async () => {
+    const startLikeButtonObserver = vi.fn();
+    const resetLikeButtonObservers = vi.fn();
+    const state: DomState = {
+      href: "https://www.nicovideo.jp/shorts/ss1",
+      watchButton: null,
+      watchContainer: null,
+      fullscreenTarget: null,
+      shortsActiveEntry: null,
+      body: {} as Element,
+      documentElement: {} as Element,
+    };
+    const playlistRoot = createPlaylistRoot(state);
+    const button = {} as Element;
+    state.shortsActiveEntry = createShortsEntry(playlistRoot, button);
+    mockContainerDeps({ startLikeButtonObserver, resetLikeButtonObservers });
+    setupContainerEnv(state);
+
+    const { startContainerObservers, resetContainerObservers } = await import("@main/observer/container");
+    // 1回目のstartでplaylist observerとbutton observerを作る
+    startContainerObservers();
+    const firstPlaylistObserver = FakeMutationObserver.instances[0];
+
+    // 2回目のstartは古いplaylist observerを切り、同一buttonの二重初期化を避ける
+    startContainerObservers();
+    expect(firstPlaylistObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(startLikeButtonObserver).toHaveBeenCalledTimes(1);
+    const secondPlaylistObserver = FakeMutationObserver.instances[1];
+
+    // 明示resetは現在のplaylist observerとbutton observerの双方を停止する
+    resetContainerObservers();
+    expect(secondPlaylistObserver.disconnect).toHaveBeenCalledTimes(1);
+    expect(resetLikeButtonObservers).toHaveBeenCalledTimes(1);
+
+    // reset後はprevButtonElementも破棄済みなので、同じDOMノードへ再バインドできる
     startContainerObservers();
     expect(startLikeButtonObserver).toHaveBeenCalledTimes(2);
     expect(startLikeButtonObserver).toHaveBeenLastCalledWith(button);
   });
 
-  it("resetContainerObserversでオブザーバーを停止する", async () => {
-    // 待機監視中の停止確認用モックを準備
+  it("待機中のresetでinit observerを停止する", async () => {
     const startLikeButtonObserver = vi.fn();
     const resetLikeButtonObservers = vi.fn();
-    const docElement = {} as Element;
     const state: DomState = {
-      href: "https://www.nicovideo.jp/watch/sm9",
-      button: null,
-      container: null,
+      href: "https://www.nicovideo.jp/shorts/ss1",
+      watchButton: null,
+      watchContainer: null,
       fullscreenTarget: null,
-      body: null,
-      documentElement: docElement,
+      shortsActiveEntry: null,
+      body: {} as Element,
+      documentElement: {} as Element,
     };
-
-    // テスト対象が参照する依存モジュールを差し替え
     mockContainerDeps({ startLikeButtonObserver, resetLikeButtonObservers });
     setupContainerEnv(state);
 
-    // テスト対象をインポート
     const { startContainerObservers, resetContainerObservers } = await import("@main/observer/container");
-
-    // 待機監視中にresetContainerObserversを呼ぶと待機observerが停止されることを確認
+    // active entry待機中のURL変更を想定し、未使用のinit observerも確実に停止する
     startContainerObservers();
-    expect(FakeMutationObserver.instances).toHaveLength(1);
-
     const initObserver = FakeMutationObserver.instances[0];
     resetContainerObservers();
 
