@@ -1,6 +1,7 @@
 import js from "@eslint/js";
 import globals from "globals";
-import tseslint from "typescript-eslint";
+import tseslint from "@typescript-eslint/eslint-plugin";
+import tsparser from "@typescript-eslint/parser";
 import { defineConfig } from "eslint/config";
 import { dirname } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -21,14 +22,22 @@ export default defineConfig([
     extends: ["js/recommended"],
     languageOptions: { globals: { ...globals.browser, chrome: "readonly" } },
   },
+  // TypeScript plugin recommended settings
   tseslint.configs.recommended,
   {
+    // Apply TypeScript parser for TS files
+    files: ["**/*.{ts,mts,cts}"],
+    languageOptions: {
+      parser: tsparser,
+      parserOptions: {
+        tsconfigRootDir,
+      },
+      globals: { ...globals.browser, chrome: "readonly" },
+    },
     rules: {
-      // 未使用変数チェック
       "@typescript-eslint/no-unused-vars": [
-        "warn", // エラーではなく警告にする
+        "warn",
         {
-          // アンダーバーだけの変数はチェックを除外
           varsIgnorePattern: "^_+$",
           argsIgnorePattern: "^_+$",
           caughtErrorsIgnorePattern: "^_+$",
