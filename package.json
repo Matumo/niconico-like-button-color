@@ -26,7 +26,7 @@
     "test:browser": "pnpm run test:browser:headless && pnpm run test:browser:xvfb",
     "test:browser:headless": "pnpm run build && playwright test --config ./chrome-extension/playwright.config.ts --project browser-headless",
     "test:browser:xvfb": "pnpm run build && xvfb-run --auto-servernum --server-args='-screen 0 1920x1080x24' pnpm exec playwright test --config ./chrome-extension/playwright.config.ts --project browser-xvfb",
-    "pack": "cd dist && find chrome-extension -print | xargs touch -m -t 198001010000.00 && find chrome-extension -type f ! -name '.DS_Store' -print | LC_ALL=C sort | zip -X -q -@ chrome-extension.zip && sha256sum chrome-extension.zip",
+    "pack": "cd dist && find chrome-extension -print | xargs touch -m -t 198001010000.00 && find chrome-extension -type f ! -name '.DS_Store' -print | LC_ALL=C sort | zip -X -q -@ chrome-extension.zip && cd ..",
     "all": "pnpm run clean && pnpm run check && pnpm run build && pnpm run test && pnpm run pack"
   },
   "devDependencies": {
@@ -47,7 +47,8 @@
     "postcss-selector-parser": "^7.1.4",
     "rimraf": "^6.1.3",
     "typescript": "^6.0.3",
-    "typescript-eslint": "^8.62.1",
+    "@typescript-eslint/eslint-plugin": "^8.62.1",
+    "@typescript-eslint/parser": "^8.62.1",
     "vite": "^8.1.3",
     "vitest": "^4.1.10"
   },
